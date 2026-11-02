@@ -139,6 +139,8 @@ const EMPTY_PREVIEW_SESSIONS = {};
 const EMPTY_PREVIEW_DESKTOP_STATE = {};
 const EMPTY_TERMINAL_LABELS = new Map<string, string>();
 const EMPTY_PENDING_SURFACES = new Set<string>();
+// Once per app session: the list re-reads every minute and after every turn.
+const announcedUnreadableHosts = new Set<string>();
 export function PullRequestsPage() {
   const search = useSearch({ from: "/_chat/pull-requests" });
   const sort = search.sort ?? "ready";
@@ -912,6 +914,23 @@ export function PullRequestsPage() {
     text: typedParsed.text,
     involvement: search.involvement,
   });
+  // Not `hosts`: that can come from the snapshot kept for cold starts, which may be stale.
+  const liveProviders = baselineQuery.data?.providers ?? listQuery.data?.providers;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- announces newly unreadable hosts through the toast manager
+  useEffect(() => {
+    for (const host of liveProviders ?? []) {
+      if (host.configured) continue;
+      const detail = host.detail ?? "This host could not be read.";
+      const key = `${host.host}\n${detail}`;
+      if (announcedUnreadableHosts.has(key)) continue;
+      announcedUnreadableHosts.add(key);
+      toastManager.add({
+        type: "error",
+        title: `Pull requests on ${host.host} could not be read`,
+        description: detail,
+      });
+    }
+  }, [liveProviders]);
   const showProvider = hosts.length > 1;
   const [closeSweepKeys, setCloseSweepKeys] = useState<ReadonlySet<string>>(() => new Set());
   const closeSensorRef = useRef<SidebarPointerSensor | null>(null);
